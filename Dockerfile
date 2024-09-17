@@ -1,11 +1,10 @@
-# Use the latest Debian base image
+# Use debian:latest as the base image
 FROM debian:latest
 
-# Set environment variables to run xemu headlessly
-ENV DISPLAY=:0
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required dependencies
+# Install necessary dependencies
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
@@ -19,36 +18,34 @@ RUN apt-get update && apt-get install -y \
     ninja-build \
     python3-yaml \
     libslirp-dev \
+    curl \
+    novnc \
+    websockify \
     x11vnc \
     xvfb \
-    curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    xfce4 \
+    dbus-x11 \
+    --no-install-recommends
 
-# Clone the xemu repository from GitHub
-RUN git clone https://github.com/mborgerson/xemu.git /opt/xemu
+# Clone and build xemu from the official repo
+RUN git clone https://github.com/mborgerson/xemu.git /xemu && \
+    cd /xemu && \
+    ./build.sh
 
-# Set working directory
-WORKDIR /opt/xemu
+# Install noVNC and configure VNC environment
+RUN mkdir -p /opt/novnc/utils/websockify && \
+    ln -s /usr/share/novnc /opt/novnc/utils/websockify
 
-# Build xemu from source
-RUN ./build.sh
-
-# Install noVNC and websockify for web access
-RUN mkdir /opt/novnc \
-    && curl -L https://github.com/novnc/noVNC/archive/refs/tags/v1.2.0.tar.gz | tar xz --strip-components=1 -C /opt/novnc \
-    && curl -L https://github.com/novnc/websockify/archive/refs/tags/v0.9.0.tar.gz | tar xz --strip-components=1 -C /opt/novnc/utils/websockify
-
-# Create a script to run xemu headlessly with noVNC
+# Create a script to run xemu headlessly in noVNC without a VNC password
 RUN echo '#!/bin/bash\n\
-xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" /opt/xemu/dist/xemu &\n\
-/opt/novnc/utils/launch.sh --vnc localhost:5900 --listen 8080' > /usr/local/bin/run-xemu-headless
+    export DISPLAY=:1\n\
+    Xvfb :1 -screen 0 1024x768x16 &\n\
+    x11vnc -nopw -display :1 -N -forever &\n\
+    websockify --web=/usr/share/novnc/ --wrap-mode=ignore 0.0.0.0:$PORT localhost:5900 &\n\
+    cd /xemu && ./dist/xemu\n' > /xemu_run.sh && chmod +x /xemu_run.sh
 
-# Make the script executable
-RUN chmod +x /usr/local/bin/run-xemu-headless
-
-# Expose the port for the web interface
+# Expose the web VNC port (Render will dynamically set the $PORT variable)
 EXPOSE 8080
 
-# Set the default command to run xemu headlessly
-CMD ["/usr/local/bin/run-xemu-headless"]
+# Run the xemu emulator via noVNC without password protection
+CMD ["/xemu_run.sh"]
