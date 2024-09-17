@@ -23,8 +23,6 @@ RUN apt-get update && apt-get install -y \
     websockify \
     x11vnc \
     xvfb \
-    xfce4 \
-    dbus-x11 \
     --no-install-recommends
 
 # Clone and build xemu from the official repo
@@ -32,19 +30,19 @@ RUN git clone https://github.com/mborgerson/xemu.git /xemu && \
     cd /xemu && \
     ./build.sh
 
-# Install noVNC and configure VNC environment
+# Install noVNC and configure the VNC environment
 RUN mkdir -p /opt/novnc/utils/websockify && \
     ln -s /usr/share/novnc /opt/novnc/utils/websockify
 
-# Create a script to run xemu headlessly in noVNC without a VNC password
+# Create a script to run xemu with xvfb and noVNC (no password required)
 RUN echo '#!/bin/bash\n\
-    export DISPLAY=:1\n\
-    Xvfb :1 -screen 0 1024x768x16 &\n\
-    x11vnc -nopw -display :1 -N -forever &\n\
+    export DISPLAY=:0\n\
+    Xvfb :0 -screen 0 1024x768x16 &\n\
+    x11vnc -nopw -display :0 -N -forever &\n\
     websockify --web=/usr/share/novnc/ --wrap-mode=ignore 0.0.0.0:$PORT localhost:5900 &\n\
     cd /xemu && ./dist/xemu\n' > /xemu_run.sh && chmod +x /xemu_run.sh
 
-# Expose the web VNC port (Render will dynamically set the $PORT variable)
+# Expose the web VNC port (Render will dynamically assign this)
 EXPOSE 8080
 
 # Run the xemu emulator via noVNC without password protection
